@@ -1,12 +1,12 @@
 ---
-title: "who_ops lab notes"
+title: "who_ops initial lab notes"
 output:
   html_document:
     df_print: paged
 ---
 
 
-## WHO_OPS - Lab Notes
+## WHO_OPS - Initial Lab Notes
 
 ```{r}
 library(here)
@@ -145,3 +145,5 @@ Ok, so clearly this won't be "scraping" really.
 I'll be "get"-ing JSON objects and using them to "get" more, climbing the org structure tree. 
 
 Let's put this on github.
+
+OK, I'm going to start a new notebook focused on working with json objects.

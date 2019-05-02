@@ -1,0 +1,183 @@
+---
+title: "visualization lab notes"
+output: html_notebook
+---
+
+```{r load common libraries}
+library(tidyverse)
+library(here)
+library(jsonlite)
+```
+
+## Explore Potential Visualizations
+
+I want to build a set of fun ways to visualize the OPS.
+These notes documents me testing them.
+
+### Treemaps
+
+I will definitely want to make an interactive treemap of the OPS if possible.
+There are many ways to generate them;
+Let's pick one and use it to help decide how to format the data that we're scraping.
+
+#### d3tr33R test
+
+Let's start with making a treemap of FASSB
+
+```{r example d3tree}
+library(d3treeR)
+library(treemap)
+
+# first here's the example for generating treemaps:
+data(GNI2014)  # data set should be in this format initially
+d3tree3(
+   treemap(   # this function will convert a data frame to the format that d3tree3 expects
+     GNI2014
+     ,index=c("continent", "iso3")
+     ,vSize="population"
+     ,vColor="GNI"
+     ,type="value"
+   )
+   , rootname = "World"
+)
+```
+
+Ok, so, I explored GNI2014:
+It looks like we want each node to have a row with one column for each level of where it fits in the hierarchy
+Grouping countries into continents isn't like grouping units into branches, though:
+There are arbitrarily many steps between a ground-level employee and their deputy minister,
+and I have one person between me and the director, but other people in my role have 2 or 3.
+
+For simplicity's sake, in this test case, let's just track levels-below-root as the tree structure.
+In another iteration, we can use the position Title attributes to use actual ranks for tree levels.
+
+```{r make fassb treemap}
+# url for querying organizations in the OPS
+org_url <- "http://www.infogo.gov.on.ca/infogo/v1/organizations/"
+
+fassb_root <-
+  here("data/raw/fassb_org.rds") %>%
+  readRDS()
+
+# oh - we have to do the traversal to know how many rows we have lol
+# well, let's make a pre-order traversal
+preorder_traverse_test <- function(node, node_level = 0) {
+  # visit this node
+  print(paste0(node$orgName, "; num children:",length(node$childOrgs) ))
+  # for each child-node of this node:    
+  for (child_node in node$childOrgs) {
+    # preorder-traverse this child node
+    child_org <-
+      org_url %>%
+      paste0("get?orgId=", child_node$orgId) %>% # looked up fassb's orgId by navigating to it on the website
+      httr::GET() %>% httr::content() %>% # fetch and interpret
+      preorder_traverse_test()
+  }
+}
+
+preorder_traverse_test(fassb_root)
+```
+
+Ok that works. 
+Let's make a general preorder_traverse that takes a visit() function
+
+```{r customizable preorder traversal}
+preorder_traverse <- function(node, visit_function, node_level = 0) {
+  # visit this node
+  visit_function(node, node_level)
+  
+  # for each child node:
+  for (child_node in node$childOrgs) {
+    # recursively traverse the children of this node:
+    child_org <- 
+      org_url %>% 
+      paste0("get?orgId=", child_node$orgId) %>%
+      httr::GET() %>% httr::content() %>% # fetch from internet and interpret child org data
+      preorder_traverse(visit_function, node_level = node_level + 1)
+  }
+}
+
+print_visit <- function(node, node_level) {
+  print(paste0(node$orgName, 
+               "; node level:", node_level, 
+               "; num children:", length(node$childOrgs)))
+}
+
+preorder_traverse(fassb_root, print_visit)
+```
+
+Let's make a function that gets orgs by id, and use it in the traversal:
+
+```{r function to query orgs by id}
+get_org <- function(orgId) {
+  # build query with url for querying organizations in the OPS
+  paste0("http://www.infogo.gov.on.ca/infogo/v1/organizations/get?orgId=", orgId) %>%
+    httr::GET() %>% httr::content() %>% # fetch from internet and interpret
+    return() # return org object
+}
+
+fassb_org <- get_org(4827) # fassb's orgId
+```
+
+Ok cool that works.
+Now to make a traversal function that uses this:
+
+```{r create best traverse function}
+getorg_traverse <- function(node, visit_function, node_level = 0) {
+  # visit this node
+  visit_function(node, node_level)
+  
+  # for each child node:
+  for (child_node in node$childOrgs) {
+    # recursively traverse the children of this node:
+    getorg_traverse(node = get_org(child_node$orgId),
+             visit_function = visit_function, 
+             node_level = node_level + 1)
+  }
+}
+
+getorg_traverse(get_org(4827), print_visit) # traverse and print FASSB
+```
+
+```{r traverse bigger orgs}
+# traverse ETD:
+# getorg_traverse(get_org(672), print_visit)
+```
+
+How long will it take to traverse the ministry?
+
+```{r traverse MTCU}
+# st <- Sys.time()
+# getorg_traverse(get_org(2698), print_visit)
+# print(Sys.time() - st)
+```
+
+It took 13 seconds!!! 
+I have a good feeling about this.
+
+OK, let's see if we can store this data in a dataframe that treemap/d3tree3 can use:
+
+```{r traverse and store in dataframe}
+
+df_traverse <- function(node, visit_function, parents = NULL) {
+  
+  # visit this node:
+  visit_function(node, parents)
+  
+  # for each child node:
+  for (child_node in node$childOrgs) {
+    
+    #recursively traverse children
+    df_traverse(node = get_org(child_node$orgId),
+                visit_function = visit_function,
+                parents = c(parents, node$orgName))
+  }
+}
+
+df_visit <- function(node, parents) {
+  print(paste0(node$orgName, ": parents = ", parents))
+}
+
+df_traverse(get_org(4827), df_visit) 
+```
+
