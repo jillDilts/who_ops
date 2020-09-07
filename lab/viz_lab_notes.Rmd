@@ -159,25 +159,36 @@ OK, let's see if we can store this data in a dataframe that treemap/d3tree3 can 
 
 ```{r traverse and store in dataframe}
 
-df_traverse <- function(node, visit_function, parents = NULL) {
+df_traverse <- function(node, df, visit_function, parents = NULL) {
   
   # visit this node:
-  visit_function(node, parents)
+  df <- visit_function(node, df, parents)
   
   # for each child node:
   for (child_node in node$childOrgs) {
     
     #recursively traverse children
-    df_traverse(node = get_org(child_node$orgId),
+    df_traverse(df = df,
+                node = get_org(child_node$orgId),
                 visit_function = visit_function,
                 parents = c(parents, node$orgName))
   }
+  return(df)
 }
 
-df_visit <- function(node, parents) {
-  print(paste0(node$orgName, ": parents = ", parents))
+df_visit <- function(node, df, parents) {
+  
+  if(!is.null(parents)) {
+    this_row <- c(parents, node$orgName)
+    if(ncol(df) < length(this_row)) { # child node is deeper than any previous
+      # add a column to the data frame
+      # add this row to the widened data frame
+    }
+  }
+  return(df)
 }
 
-df_traverse(get_org(4827), df_visit) 
+tmp <- data.frame(root_org = NA)
+a <- df_traverse(get_org(4827), tmp, df_visit) 
 ```
 
